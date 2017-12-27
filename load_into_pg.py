@@ -1,10 +1,12 @@
 #!/usr/bin/env python
+#!/bin/sh
 import sys
 import time
 import argparse
 import psycopg2 as pg
 import row_processor as Processor
 import six
+import subprocess
 
 # Special rules needed for certain tables (esp. for old database dumps)
 specialRules = {
@@ -115,23 +117,118 @@ def handleTable(table, keys, dbname, mbDbFile, mbHost, mbPort, mbUsername, mbPas
 
 
 
+
+def get_keys(table):
+    if table == 'Users':
+        keys = [
+            'Id'
+          , 'Reputation'
+          , 'CreationDate'
+          , 'DisplayName'
+          , 'LastAccessDate'
+          , 'WebsiteUrl'
+          , 'Location'
+          , 'AboutMe'
+          , 'Views'
+          , 'UpVotes'
+          , 'DownVotes'
+          , 'ProfileImageUrl'
+          , 'Age'
+          , 'AccountId'
+        ]
+    elif table == 'Badges':
+        keys = [
+            'Id'
+          , 'UserId'
+          , 'Name'
+          , 'Date'
+        ]
+    elif table == 'PostLinks':
+        keys = [
+            'Id'
+          , 'CreationDate'
+          , 'PostId'
+          , 'RelatedPostId'
+          , 'LinkTypeId'
+        ]
+    elif table == 'Comments':
+        keys = [
+            'Id'
+          , 'PostId'
+          , 'Score'
+          , 'Text'
+          , 'CreationDate'
+          , 'UserId'
+        ]
+    elif table == 'Votes':
+        keys = [
+            'Id'
+          , 'PostId'
+          , 'VoteTypeId'
+          , 'UserId'
+          , 'CreationDate'
+          , 'BountyAmount'
+        ]
+    elif table == 'Posts':
+        keys = [
+            'Id'
+          , 'PostTypeId'
+          , 'AcceptedAnswerId'
+          , 'ParentId'
+          , 'CreationDate'
+          , 'Score'
+          , 'ViewCount'
+          , 'Body'
+          , 'OwnerUserId'
+          , 'LastEditorUserId'
+          , 'LastEditorDisplayName'
+          , 'LastEditDate'
+          , 'LastActivityDate'
+          , 'Title'
+          , 'Tags'
+          , 'AnswerCount'
+          , 'CommentCount'
+          , 'FavoriteCount'
+          , 'ClosedDate'
+          , 'CommunityOwnedDate'
+        ]
+    
+        # If the user has not explicitly asked for loading the body, we replace it with NULL
+        if not args.with_post_body:
+            specialRules[('Posts', 'Body')] = 'NULL'
+    
+    elif table == 'Tags':
+        keys = [
+            'Id'
+          , 'TagName'
+          , 'Count'
+          , 'ExcerptPostId'
+          , 'WikiPostId'
+        ]
+    elif table == 'PostHistory':
+        keys = [
+            'Id',
+            'PostHistoryTypeId',
+            'PostId',
+            'RevisionGUID',
+            'CreationDate',
+            'UserId',
+            'Text'
+        ]
+    elif table == 'Comments':
+        keys = [
+            'Id',
+            'PostId',
+            'Score',
+            'Text',
+            'CreationDate',
+            'UserId',
+        ]
+    return keys
+
 #############################################################
 
 parser = argparse.ArgumentParser()
-parser.add_argument( 'table'
-                   , help    = 'The table to work on.'
-                   , choices = ['Users', 'Badges', 'Posts', 'Tags', 'Votes', 'PostLinks', 'PostHistory', 'Comments']
-                   )
-
-parser.add_argument( '-d', '--dbname'
-                   , help    = 'Name of database to create the table in. The database must exist.'
-                   , default = 'stackoverflow'
-                   )
-
-parser.add_argument( '-f', '--file'
-                   , help    = 'Name of the file to extract data from.'
-                   , default = None
-                   )
 
 parser.add_argument( '-u', '--username'
                    , help    = 'Username for the database.'
@@ -161,114 +258,7 @@ parser.add_argument( '--with-post-body'
 
 args = parser.parse_args()
 
-table = args.table
-keys = None
 
-if table == 'Users':
-    keys = [
-        'Id'
-      , 'Reputation'
-      , 'CreationDate'
-      , 'DisplayName'
-      , 'LastAccessDate'
-      , 'WebsiteUrl'
-      , 'Location'
-      , 'AboutMe'
-      , 'Views'
-      , 'UpVotes'
-      , 'DownVotes'
-      , 'ProfileImageUrl'
-      , 'Age'
-      , 'AccountId'
-    ]
-elif table == 'Badges':
-    keys = [
-        'Id'
-      , 'UserId'
-      , 'Name'
-      , 'Date'
-    ]
-elif table == 'PostLinks':
-    keys = [
-        'Id'
-      , 'CreationDate'
-      , 'PostId'
-      , 'RelatedPostId'
-      , 'LinkTypeId'
-    ]
-elif table == 'Comments':
-    keys = [
-        'Id'
-      , 'PostId'
-      , 'Score'
-      , 'Text'
-      , 'CreationDate'
-      , 'UserId'
-    ]
-elif table == 'Votes':
-    keys = [
-        'Id'
-      , 'PostId'
-      , 'VoteTypeId'
-      , 'UserId'
-      , 'CreationDate'
-      , 'BountyAmount'
-    ]
-elif table == 'Posts':
-    keys = [
-        'Id'
-      , 'PostTypeId'
-      , 'AcceptedAnswerId'
-      , 'ParentId'
-      , 'CreationDate'
-      , 'Score'
-      , 'ViewCount'
-      , 'Body'
-      , 'OwnerUserId'
-      , 'LastEditorUserId'
-      , 'LastEditorDisplayName'
-      , 'LastEditDate'
-      , 'LastActivityDate'
-      , 'Title'
-      , 'Tags'
-      , 'AnswerCount'
-      , 'CommentCount'
-      , 'FavoriteCount'
-      , 'ClosedDate'
-      , 'CommunityOwnedDate'
-    ]
-
-    # If the user has not explicitly asked for loading the body, we replace it with NULL
-    if not args.with_post_body:
-        specialRules[('Posts', 'Body')] = 'NULL'
-
-elif table == 'Tags':
-    keys = [
-        'Id'
-      , 'TagName'
-      , 'Count'
-      , 'ExcerptPostId'
-      , 'WikiPostId'
-    ]
-elif table == 'PostHistory':
-    keys = [
-        'Id',
-        'PostHistoryTypeId',
-        'PostId',
-        'RevisionGUID',
-        'CreationDate',
-        'UserId',
-        'Text'
-    ]
-elif table == 'Comments':
-    keys = [
-        'Id',
-        'PostId',
-        'Score',
-        'Text',
-        'CreationDate',
-        'UserId',
-    ]
 
 try:
     # Python 2/3 compatibility
@@ -276,10 +266,14 @@ try:
 except NameError:
     pass
 
-choice = input('This will drop the {} table. Are you sure [y/n]?'.format(table))
-
-if len(choice) > 0 and choice[0].lower() == 'y':
-    handleTable(table, keys, args.dbname, args.file, args.host, args.port, args.username, args.password)
-else:
-    six.print_("Cancelled.")
+database_name= "emacs"
+subprocess.call("./create_db.sh %s"%database_name,shell=True)
+dump_folder="/home/befi8957/tmp/data/emacs.stackexchange.com/"
+tables = ['Comments','PostHistory','Tags','Posts','Votes','Comments','PostLinks','Badges']
+for table in tables:
+    
+    file = dump_folder+table+".xml"
+    keys = get_keys(table)
+    handleTable(table, keys, database_name, file, args.host, args.port, args.username, args.password)
+    
 
