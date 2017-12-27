@@ -1,0 +1,1 @@
+psql postgres -c "create database $1"
