@@ -268,7 +268,7 @@ except NameError:
 
 database_name= "emacs"
 subprocess.call("./create_db.sh %s"%database_name,shell=True)
-dump_folder="/home/befi8957/tmp/data/emacs.stackexchange.com/"
+dump_folder="/media/webis20/corpora/corpora-thirdparty/corpora-stackexcahnge/http/english.stackexchange.com/"
 tables = ['Comments','PostHistory','Tags','Posts','Votes','Comments','PostLinks','Badges']
 for table in tables:
     
